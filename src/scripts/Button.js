@@ -1,97 +1,178 @@
 import React, { PropTypes } from 'react';
+import ReactDOM from 'react-dom';
 import classnames from 'classnames';
-import Icon from './Icon';
+import Button from './Button';
+import DropdownMenu from './DropdownMenu';
+import { registerStyle } from './util';
 
-export default class Button extends React.Component {
-  renderIcon() {
-    const { icon, iconAlign, iconSize, type } = this.props;
-    let { inverse } = this.props;
-    inverse = inverse || /\-?inverse$/.test(type);
-    return <ButtonIcon icon={ icon } align={ iconAlign } size={ iconSize } inverse={ inverse } />;
+export default class DropdownButton extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {opened: false};
+    registerStyle('no-hover-popup', [
+      [
+        '.slds-dropdown-trigger:hover .slds-dropdown--menu.react-slds-no-hover-popup',
+        '{ visibility: hidden; opacity: 0; }',
+      ],
+      [
+        '.slds-dropdown-trigger.react-slds-dropdown-opened .slds-dropdown--menu',
+        '{ visibility: visible !important; opacity: 1 !important; }',
+      ],
+    ]);
   }
 
-  renderIconMore() {
-    return <ButtonIcon icon={ this.props.iconMore } size='x-small' />;
+  onBlur() {
+    setTimeout(() => {
+      if (!this.isFocusedInComponent()) {
+        this.setState({opened: false});
+        if (this.props.onBlur) {
+          this.props.onBlur();
+        }
+      }
+    }, 10);
+  }
+
+  onKeyDown(e) {
+    if (e.keyCode === 40) { // down
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.state.opened) {
+        this.setState({opened: true});
+        setTimeout(() => {
+          this.focusToTargetItemEl();
+        }, 20);
+      } else {
+        this.focusToTargetItemEl();
+      }
+    } else if (e.keyCode === 27) { // ESC
+      e.preventDefault();
+      e.stopPropagation();
+      this.setState({opened: false});
+    }
+  }
+
+  onTriggerClick(...args) {
+    if (!this.props.hoverPopup) {
+      this.setState({opened: !this.state.opened});
+    }
+    if (this.props.onClick) {
+      this.props.onClick(...args);
+    }
+  }
+
+  onMenuItemClick(...args) {
+    if (!this.props.hoverPopup) {
+      setTimeout(() => {
+        const triggerElem = ReactDOM.findDOMNode(this.refs.trigger);
+        if (triggerElem) triggerElem.focus();
+        this.setState({opened: false});
+      }, 10);
+    }
+    if (this.props.onMenuItemClick) {
+      this.props.onMenuItemClick(...args);
+    }
+  }
+
+  onMenuClose() {
+    const triggerElem = ReactDOM.findDOMNode(this.refs.trigger);
+    triggerElem.focus();
+    this.setState({opened: false});
+  }
+
+  isFocusedInComponent() {
+    const rootEl = ReactDOM.findDOMNode(this);
+    let targetEl = document.activeElement;
+    while (targetEl && targetEl !== rootEl) {
+      targetEl = targetEl.parentNode;
+    }
+    return !!targetEl;
+  }
+
+  focusToTargetItemEl() {
+    const dropdownEl = ReactDOM.findDOMNode(this.refs.dropdown);
+    const firstItemEl =
+      dropdownEl.querySelector('.slds-is-selected > .react-slds-menuitem[tabIndex]') ||
+      dropdownEl.querySelector('.react-slds-menuitem[tabIndex]');
+    if (firstItemEl) {
+      firstItemEl.focus();
+    }
+  }
+
+  renderButton({ grouped, isFirstInGroup, isLastInGroup, ...props }) {
+    if (grouped) {
+      const noneStyle = {display: 'none'};
+      return (
+        <div className='slds-button-group'>
+          { isFirstInGroup ? null : <button className='slds-button' style={ noneStyle }></button> }
+          <Button { ...props } aria-haspopup
+                               ref='trigger'
+                               onClick={ this.onTriggerClick.bind(this) }
+                               onKeyDown={ this.onKeyDown.bind(this) }
+                               onBlur={ this.onBlur.bind(this) }
+          />
+          { isLastInGroup ? null : <button className='slds-button' style={ noneStyle }></button> }
+        </div>
+      );
+    }
+
+    return (
+      <Button { ...props } aria-haspopup
+                           ref='trigger'
+                           onClick={ this.onTriggerClick.bind(this) }
+                           onKeyDown={ this.onKeyDown.bind(this) }
+                           onBlur={ this.onBlur.bind(this) }
+      />
+    );
   }
 
   render() {
-    const { className, type, size, icon, iconSize, iconAlign, iconMore, selected, alt, label, htmlType = 'button', children, ...props } = this.props;
-    const typeClassName = type ? `slds-button--${type}` : null;
-    const btnClassNames = classnames(
+    const { className, menuAlign = 'left', menuSize, nubbinTop, hoverPopup, menuHeader, type, label, children, ...props } = this.props;
+    let { icon } = this.props;
+    const dropdownClassNames = classnames(
       className,
-      'slds-button',
-      'slds-button-space-left',
-      typeClassName,
-      {
-        'slds-is-selected': selected,
-        [`slds-button--${size}`]: size && !/^icon-/.test(type),
-        [`slds-button--icon-${size}`]: /^(x-small|small)$/.test(size) && /^icon-/.test(type),
-      }
+      'slds-dropdown-trigger',
+      {'react-slds-dropdown-opened': this.state.opened}
     );
+    let iconMore = null;
+    if (!label && !icon) {
+      icon = 'down';
+    }
+    if (label || type === 'icon-more') {
+      iconMore = 'down';
+    }
     return (
-      <button className={ btnClassNames } type={ htmlType } { ...props }>
-        { icon && iconAlign !== 'right' ? this.renderIcon() : null }
-        { children || label }
-        { icon && iconAlign === 'right' ? this.renderIcon() : null }
-        { iconMore ? this.renderIconMore() : null }
-        { alt ? <span className='slds-assistive-text'>{ alt }</span> : null }
-      </button>
+      <div className={ dropdownClassNames }>
+        { this.renderButton({type, label, icon, iconMore, ...props}) }
+        <DropdownMenu align={ menuAlign } header={ menuHeader } size={ menuSize }
+                      nubbinTop={ nubbinTop } hoverPopup={ hoverPopup }
+                      ref='dropdown'
+                      onMenuItemClick={ this.onMenuItemClick.bind(this) }
+                      onMenuClose={ this.onMenuClose.bind(this) }
+                      onBlur={ this.onBlur.bind(this) }
+        >
+          { children }
+        </DropdownMenu>
+      </div>
     );
   }
+
 }
 
-export const BUTTON_TYPES = [
-  'neutral',
-  'brand',
-  'destructive',
-  'inverse',
-  'icon-bare',
-  'icon-container',
-  'icon-inverse',
-  'icon-more',
-  'icon-border',
-  'icon-border-filled',
-];
-
-const BUTTON_SIZES = ['x-small', 'small', 'medium', 'large'];
-
-const ICON_SIZES = ['x-small', 'small', 'medium', 'large'];
-
-const ICON_ALIGNS = ['left', 'right'];
-
-Button.propTypes = {
+DropdownButton.propTypes = {
   className: PropTypes.string,
   label: PropTypes.string,
-  alt: PropTypes.string,
-  type: PropTypes.oneOf(BUTTON_TYPES),
-  size: PropTypes.oneOf(BUTTON_SIZES),
-  htmlType: PropTypes.string,
-  disabled: PropTypes.bool,
-  selected: PropTypes.bool,
-  inverse: PropTypes.bool,
+  type: PropTypes.string,
   icon: PropTypes.string,
-  iconSize: PropTypes.oneOf(ICON_SIZES),
-  iconAlign: PropTypes.oneOf(ICON_ALIGNS),
-  iconMore: PropTypes.string,
+  menuAlign: PropTypes.oneOf(['left', 'center', 'right']),
+  menuSize: PropTypes.oneOf(['small', 'medium', 'large']),
+  menuHeader: PropTypes.string,
+  nubbinTop: PropTypes.bool,
+  hoverPopup: PropTypes.bool,
+  onBlur: PropTypes.func,
+  onClick: PropTypes.func,
+  onMenuItemClick: PropTypes.func,
+  grouped: PropTypes.bool,
+  isFirstInGroup: PropTypes.bool,
+  isLastInGroup: PropTypes.bool,
   children: PropTypes.node,
-};
-
-
-export class ButtonIcon extends React.Component {
-  render() {
-    const { icon, align, size, inverse, className, ...props } = this.props;
-    const alignClassName = ICON_ALIGNS.includes(align) ? `slds-button__icon--${align}` : null;
-    const sizeClassName = ICON_SIZES.includes(size) ? `slds-button__icon--${size}` : null;
-    const inverseClassName = inverse ? 'slds-button__icon--inverse' : null;
-    const iconClassNames = classnames('slds-button__icon', alignClassName, sizeClassName, inverseClassName, className);
-    return <Icon className={ iconClassNames } icon={ icon } textColor={ null } { ...props } />;
-  }
-}
-
-ButtonIcon.propTypes = {
-  className: PropTypes.string,
-  icon: PropTypes.string,
-  align: PropTypes.oneOf(['left', 'right']),
-  size: PropTypes.oneOf(['x-small', 'small', 'medium', 'large']),
-  inverse: PropTypes.bool,
 };
